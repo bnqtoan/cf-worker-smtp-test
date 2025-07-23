@@ -3,29 +3,189 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Hello, World!</title>
+		<title>SMTP Credential Tester</title>
+		<style>
+			body {
+				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+				max-width: 600px;
+				margin: 2rem auto;
+				padding: 0 1rem;
+				line-height: 1.6;
+			}
+			.form-group {
+				margin-bottom: 1rem;
+			}
+			label {
+				display: block;
+				margin-bottom: 0.5rem;
+				font-weight: 500;
+			}
+			input, select, textarea {
+				width: 100%;
+				padding: 0.5rem;
+				border: 1px solid #ddd;
+				border-radius: 4px;
+				font-size: 14px;
+			}
+			button {
+				background: #0070f3;
+				color: white;
+				border: none;
+				padding: 0.75rem 1.5rem;
+				border-radius: 4px;
+				cursor: pointer;
+				font-size: 14px;
+			}
+			button:hover {
+				background: #0051cc;
+			}
+			button:disabled {
+				background: #ccc;
+				cursor: not-allowed;
+			}
+			.result {
+				margin-top: 1rem;
+				padding: 1rem;
+				border-radius: 4px;
+				display: none;
+			}
+			.success {
+				background: #d4edda;
+				color: #155724;
+				border: 1px solid #c3e6cb;
+			}
+			.error {
+				background: #f8d7da;
+				color: #721c24;
+				border: 1px solid #f5c6cb;
+			}
+		</style>
 	</head>
 	<body>
-		<h1 id="heading"></h1>
-		<p>This page comes from a static asset stored at `public/index.html` as configured in `wrangler.jsonc`.</p>
-		<button id="button" type="button">Fetch a random UUID</button>
-		<output id="random" for="button"></output>
+		<h1>SMTP Credential Tester</h1>
+		<p>Test your SMTP server credentials by sending a test email.</p>
+		
+		<form id="smtpForm">
+			<div class="form-group">
+				<label for="preset">Server Preset (Optional)</label>
+				<select id="preset">
+					<option value="">Custom Configuration</option>
+					<option value="aws-ses-us-east-1">AWS SES (US East 1)</option>
+					<option value="aws-ses-us-west-2">AWS SES (US West 2)</option>
+					<option value="aws-ses-eu-west-1">AWS SES (EU West 1)</option>
+					<option value="aws-ses-ap-southeast-1">AWS SES (AP Southeast 1)</option>
+					<option value="gmail">Gmail</option>
+					<option value="outlook">Outlook/Hotmail</option>
+					<option value="yahoo">Yahoo</option>
+				</select>
+			</div>
+			
+			<div class="form-group">
+				<label for="host">SMTP Server Host</label>
+				<input type="text" id="host" required placeholder="smtp.example.com">
+			</div>
+			
+			<div class="form-group">
+				<label for="port">SMTP Port</label>
+				<input type="number" id="port" required placeholder="587" min="1" max="65535">
+			</div>
+			
+			<div class="form-group">
+				<label for="secure">Encryption</label>
+				<select id="secure" required>
+					<option value="false">STARTTLS (Port 587)</option>
+					<option value="true">SSL/TLS (Port 465)</option>
+					<option value="none">None (Port 25)</option>
+				</select>
+			</div>
+			
+			<div class="form-group">
+				<label for="username">Username</label>
+				<input type="text" id="username" required placeholder="your-username">
+			</div>
+			
+			<div class="form-group">
+				<label for="password">Password</label>
+				<input type="password" id="password" required placeholder="your-password">
+			</div>
+			
+			<div class="form-group">
+				<label for="from">From Email</label>
+				<input type="email" id="from" required placeholder="sender@example.com">
+			</div>
+			
+			<div class="form-group">
+				<label for="to">To Email (Test Recipient)</label>
+				<input type="email" id="to" required placeholder="recipient@example.com">
+			</div>
+			
+			<button type="submit" id="testButton">Send Test Email</button>
+		</form>
+		
+		<div id="result" class="result"></div>
+		
 		<script>
-			fetch('/message')
-				.then((resp) => resp.text())
-				.then((text) => {
-					const h1 = document.getElementById('heading');
-					h1.textContent = text;
-				});
-
-			const button = document.getElementById("button");
-			button.addEventListener("click", () => {
-				fetch('/random')
-					.then((resp) => resp.text())
-					.then((text) => {
-						const random = document.getElementById('random');
-						random.textContent = text;
+			const presets = {
+				'aws-ses-us-east-1': { host: 'email-smtp.us-east-1.amazonaws.com', port: 587, secure: 'false' },
+				'aws-ses-us-west-2': { host: 'email-smtp.us-west-2.amazonaws.com', port: 587, secure: 'false' },
+				'aws-ses-eu-west-1': { host: 'email-smtp.eu-west-1.amazonaws.com', port: 587, secure: 'false' },
+				'aws-ses-ap-southeast-1': { host: 'email-smtp.ap-southeast-1.amazonaws.com', port: 587, secure: 'false' },
+				'gmail': { host: 'smtp.gmail.com', port: 587, secure: 'false' },
+				'outlook': { host: 'smtp-mail.outlook.com', port: 587, secure: 'false' },
+				'yahoo': { host: 'smtp.mail.yahoo.com', port: 587, secure: 'false' }
+			};
+			
+			document.getElementById('preset').addEventListener('change', function() {
+				const preset = presets[this.value];
+				if (preset) {
+					document.getElementById('host').value = preset.host;
+					document.getElementById('port').value = preset.port;
+					document.getElementById('secure').value = preset.secure;
+				}
+			});
+			
+			document.getElementById('smtpForm').addEventListener('submit', async function(e) {
+				e.preventDefault();
+				
+				const button = document.getElementById('testButton');
+				const result = document.getElementById('result');
+				
+				button.disabled = true;
+				button.textContent = 'Testing...';
+				result.style.display = 'none';
+				
+				const formData = {
+					host: document.getElementById('host').value,
+					port: parseInt(document.getElementById('port').value),
+					secure: document.getElementById('secure').value === 'true',
+					username: document.getElementById('username').value,
+					password: document.getElementById('password').value,
+					from: document.getElementById('from').value,
+					to: document.getElementById('to').value
+				};
+				
+				try {
+					const response = await fetch('/test-smtp', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify(formData)
 					});
+					
+					const data = await response.json();
+					
+					result.className = response.ok ? 'result success' : 'result error';
+					result.textContent = data.message;
+					result.style.display = 'block';
+				} catch (error) {
+					result.className = 'result error';
+					result.textContent = 'Network error: ' + error.message;
+					result.style.display = 'block';
+				} finally {
+					button.disabled = false;
+					button.textContent = 'Send Test Email';
+				}
 			});
 		</script>
 	</body>
